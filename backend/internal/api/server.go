@@ -75,6 +75,7 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /api/auth/me", s.requireAuth(s.handleMe))
 
 	m.HandleFunc("GET /api/reset/status", s.requireAuth(s.handleResetStatus))
+	m.HandleFunc("GET /api/reset/usage", s.requireAuth(s.handleResetUsage))
 	m.HandleFunc("GET /api/reset/history", s.requireAuth(s.handleResetHistory))
 	m.HandleFunc("POST /api/reset/execute", s.requireAuth(s.handleResetExecute))
 

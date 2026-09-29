@@ -26,6 +26,7 @@ const (
 type Credentials struct {
 	ZCodeJWT   string
 	PlanToken  string
+	Family     string // bigmodel | zai（用量监控接口按 family 选主机）
 	TargetType string
 	OrgID      string
 	ProjectID  string
@@ -77,6 +78,27 @@ type Status struct {
 type OpportunityResult struct {
 	Granted   bool
 	NextTryAt int64 // 毫秒；0 表示无冷却信息
+}
+
+// UsageLimit 是 quota/limit 返回的单个额度桶。
+// 契约（与 ZCode 客户端 bigmodelUsageQuotaMapper 核对一致）：
+//   - TOKENS_LIMIT / unit=3 → 5 小时窗口 token 配额；unit=6 → 周窗口 token 配额
+//   - TIME_LIMIT  / unit=5 → 每月工具调用配额（带 usage/remaining）
+//   - percentage 为「已使用」占比；nextResetTime 为毫秒时间戳
+type UsageLimit struct {
+	Type         string `json:"type"`
+	Unit         int    `json:"unit"`
+	Number       int    `json:"number"`
+	Usage        *int   `json:"usage,omitempty"`
+	CurrentValue *int   `json:"currentValue,omitempty"`
+	Remaining    *int   `json:"remaining,omitempty"`
+	Percentage   int    `json:"percentage"`
+	NextResetTime int64 `json:"nextResetTime"`
+}
+
+type QuotaLimitResult struct {
+	Level  string       `json:"level"`
+	Limits []UsageLimit `json:"limits"`
 }
 
 // DeniedError 上游业务码 3301：当前不允许申领（带服务端冷却边界）。
@@ -275,6 +297,93 @@ func (c *Client) Use(ctx context.Context, idempotencyKey, resetType string) erro
 	})
 	_, err := c.doJSON(ctx, http.MethodPost, c.url("/api/v1/coding-plan/reset/use"), body)
 	return err
+}
+
+// QuotaLimit 查询 Coding Plan 用量监控接口（只读，不消耗任何额度）。
+// 与 reset API 不同：主机按 family 选择（bigmodel→bigmodel.cn / zai→api.z.ai），
+// 鉴权是 authorization 头直传业务 Key（不套 Bearer），信封成功码为 200。
+func (c *Client) QuotaLimit(ctx context.Context) (*QuotaLimitResult, error) {
+	if c.mock {
+		usage, used, remaining := 1000, 23, 977
+		return &QuotaLimitResult{
+			Level: "pro",
+			Limits: []UsageLimit{
+				{Type: "TOKENS_LIMIT", Unit: 3, Number: 5, Percentage: 30, NextResetTime: time.Now().Add(2 * time.Hour).UnixMilli()},
+				{Type: "TOKENS_LIMIT", Unit: 6, Number: 1, Percentage: 12, NextResetTime: time.Now().Add(72 * time.Hour).UnixMilli()},
+				{Type: "TIME_LIMIT", Unit: 5, Number: 1, Usage: &usage, CurrentValue: &used, Remaining: &remaining, Percentage: 2, NextResetTime: time.Now().Add(240 * time.Hour).UnixMilli()},
+			},
+		}, nil
+	}
+	u := c.usageURL("/api/monitor/usage/quota/limit")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
+	// monitor 契约：authorization 直传业务 Key，不加 Bearer；Team Plan 另带组织头与 type=2。
+	for k, v := range c.usageHeaders() {
+		req.Header.Set(k, v)
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if err != nil {
+		return nil, err
+	}
+	var env envelope
+	if err := json.Unmarshal(raw, &env); err != nil {
+		return nil, fmt.Errorf("quota/limit 响应不是合法 JSON: %w", err)
+	}
+	// monitor 信封成功码是 200（区别于 reset API 的 0）。
+	if env.Code != 0 && env.Code != 200 {
+		return nil, &BusinessError{Code: env.Code, Message: env.Msg}
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, &BusinessError{Code: resp.StatusCode, Message: env.Msg}
+	}
+	var payload struct {
+		Level  string       `json:"level"`
+		Limits []UsageLimit `json:"limits"`
+	}
+	if err := json.Unmarshal(env.Data, &payload); err != nil {
+		return nil, fmt.Errorf("quota/limit 数据解析失败: %w", err)
+	}
+	return &QuotaLimitResult{Level: payload.Level, Limits: payload.Limits}, nil
+}
+
+// usageBase 按 family 选择用量监控主机；BaseURL 覆盖仅作用于 reset API，
+// 用量监控没有本地部署场景，始终走 family 对应的官方业务域名。
+func (c *Client) usageBase() string {
+	if c.creds.Family == "zai" {
+		return "https://api.z.ai"
+	}
+	return "https://bigmodel.cn"
+}
+
+func (c *Client) usageURL(path string) string {
+	u := c.usageBase() + path
+	if c.creds.TargetType == model.TargetTeam {
+		u += "?type=2"
+	}
+	return u
+}
+
+func (c *Client) usageHeaders() map[string]string {
+	h := map[string]string{
+		"authorization": c.creds.PlanToken,
+		"Accept":        "application/json",
+	}
+	if c.creds.TargetType == model.TargetTeam {
+		if c.creds.OrgID != "" {
+			h["bigmodel-organization"] = c.creds.OrgID
+		}
+		if c.creds.ProjectID != "" {
+			h["bigmodel-project"] = c.creds.ProjectID
+		}
+	}
+	return h
 }
 
 // ---------- MOCK 上游（MOCK_UPSTREAM=true，仅开发联调） ----------

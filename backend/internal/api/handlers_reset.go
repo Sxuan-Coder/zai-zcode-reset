@@ -55,6 +55,7 @@ func (s *Server) resolveClient(user model.User) (model.UpstreamAccount, *upstrea
 	client := upstream.NewClient(upstream.Credentials{
 		ZCodeJWT:   jwt,
 		PlanToken:  token,
+		Family:     account.Family,
 		TargetType: account.TargetType,
 		OrgID:      account.OrgID,
 		ProjectID:  account.ProjectID,
@@ -137,6 +138,80 @@ func (s *Server) handleResetStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, s.buildStatusResponse(s.quota, account, st, user.ID))
+}
+
+type usageWindow struct {
+	UsedPercent int   `json:"used_percent"`
+	NextResetAt int64 `json:"next_reset_at"`
+}
+
+type usageResponse struct {
+	Account  string        `json:"account"`
+	Level    string        `json:"level"`
+	FiveHour *usageWindow  `json:"five_hour"`
+	Week     *usageWindow  `json:"week"`
+	Tool     *usageWindow  `json:"tool,omitempty"`
+	ToolInfo *struct {
+		Used      int `json:"used"`
+		Remaining int `json:"remaining"`
+	} `json:"tool_info,omitempty"`
+}
+
+func findUsageLimit(limits []upstream.UsageLimit, limitType string, unit int) *upstream.UsageLimit {
+	for i := range limits {
+		if limits[i].Type == limitType && limits[i].Unit == unit {
+			return &limits[i]
+		}
+	}
+	return nil
+}
+
+func windowFrom(l *upstream.UsageLimit) *usageWindow {
+	if l == nil {
+		return nil
+	}
+	return &usageWindow{UsedPercent: l.Percentage, NextResetAt: l.NextResetTime}
+}
+
+// handleResetUsage 返回当前账号 Coding Plan 的真实用量（5 小时 / 周 / 月工具配额），
+// 数据来自上游只读监控接口 quota/limit，不消耗任何额度。
+func (s *Server) handleResetUsage(w http.ResponseWriter, r *http.Request) {
+	user, _, _ := CurrentUser(r.Context())
+	account, client, err := s.resolveClient(user)
+	if err != nil {
+		s.writeUpstreamSetupError(w, err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	defer cancel()
+	result, err := client.QuotaLimit(ctx)
+	if err != nil {
+		s.writeUpstreamError(w, err)
+		return
+	}
+	resp := usageResponse{
+		Account:  account.Name,
+		Level:    result.Level,
+		FiveHour: windowFrom(findUsageLimit(result.Limits, "TOKENS_LIMIT", 3)),
+		Week:     windowFrom(findUsageLimit(result.Limits, "TOKENS_LIMIT", 6)),
+		Tool:     windowFrom(findUsageLimit(result.Limits, "TIME_LIMIT", 5)),
+	}
+	if tool := findUsageLimit(result.Limits, "TIME_LIMIT", 5); tool != nil && tool.Usage != nil {
+		// 上游契约：usage=总量，currentValue=已用，remaining=剩余。
+		used := *tool.Usage
+		remaining := 0
+		if tool.CurrentValue != nil {
+			used = *tool.CurrentValue
+		}
+		if tool.Remaining != nil {
+			remaining = *tool.Remaining
+		}
+		resp.ToolInfo = &struct {
+			Used      int `json:"used"`
+			Remaining int `json:"remaining"`
+		}{Used: used, Remaining: remaining}
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // handleResetHistory 返回当前用户自己的最近重置记录（成员侧「记录」页数据源）。
