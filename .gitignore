@@ -1,0 +1,27 @@
+# 数据与密钥（含真实上游令牌、secret.key、密码哈希、审计日志，严禁提交）
+backend/data/
+backend/data-*/
+data/
+docs/
+
+# 构建产物
+backend/zsr
+backend/zsr.exe
+backend/zsr.exe~
+backend/*.exe
+frontend/dist/
+frontend/node_modules/
+
+# 敏感与临时文件
+secret.key
+*.key
+.env
+.env.*
+backend/backend.exe
+shots/keys.txt
+shots/post.json
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
