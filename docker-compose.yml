@@ -1,0 +1,30 @@
+# zai-zcode-reset 一键部署（适用于 CentOS 7 及任意 Linux，Docker ≥ 20.10）
+#
+#   docker compose up -d        # 老版本 docker-compose 同样可读此文件
+#   docker compose logs -f      # 首次启动会打印管理员初始密码（仅显示一次，请立即保存）
+#
+# 镜像默认拉取 Docker Hub 上的 sxuancoder/zai-zcode-reset:latest；
+# 若你自行构建了镜像，通过环境变量覆盖：ZSR_IMAGE=<你的用户名>/zai-zcode-reset docker compose up -d
+# （version 字段是为兼容 CentOS 7 老版 docker-compose v1 保留；新版 Docker 会提示 obsolete，属正常）
+version: "3.8"
+
+services:
+  zai-zcode-reset:
+    image: ${ZSR_IMAGE:-sxuancoder/zai-zcode-reset:latest}
+    container_name: zai-zcode-reset
+    restart: unless-stopped
+    ports:
+      - "8787:8787"              # 若仅供本机 Nginx/Caddy 反代，改为 "127.0.0.1:8787:8787"
+    environment:
+      LISTEN_ADDR: "0.0.0.0:8787"
+      DATA_DIR: "/app/data"
+      # ADMIN_PASSWORD: "change-me"   # 不设置则首启随机生成，看容器日志
+      # ADMIN_USERNAME: "admin"
+      # TRUST_PROXY: "true"           # 前置反代后开启，才能记录真实 IP
+      # COOKIE_SECURE: "true"         # HTTPS 部署时开启
+      # SESSION_TTL_HOURS: "168"
+      # DEFAULT_DAY_LIMIT: "1"        # 首次播种的全局每日重置上限
+      # DEFAULT_WEEK_LIMIT: "2"       # 首次播种的全局每周重置上限
+      # MASTER_KEY: "<64位hex>"       # 默认自动生成并落盘到 data/secret.key，注意备份
+    volumes:
+      - ./data:/app/data          # db.json、secret.key、审计日志全在此目录，记得定期备份

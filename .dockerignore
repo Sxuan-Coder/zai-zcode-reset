@@ -1,0 +1,36 @@
+# 版本库与文档（不进镜像）
+.git/
+.github/
+.gitignore
+.dockerignore
+docs/
+*.md
+LICENSE
+NOTICE
+
+# 本地数据目录（含真实上游令牌、secret.key、密码哈希、审计日志——绝不能进入镜像）
+backend/data/
+backend/data-*/
+**/secret.key
+*.key
+*.log
+
+# 本地构建产物与依赖（镜像内会重新构建）
+frontend/node_modules/
+frontend/dist/
+frontend/tsconfig.tsbuildinfo
+backend/zsr
+backend/zsr.exe
+backend/zsr.exe~
+backend/*.exe
+backend/backend.exe
+
+# 本地环境文件
+.env
+.env.*
+
+# IDE 与系统文件
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
