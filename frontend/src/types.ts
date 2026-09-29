@@ -46,6 +46,21 @@ export interface StatusResponse {
   last_result?: ExecuteOutcome;
 }
 
+// Coding Plan 真实用量（上游 quota/limit 只读接口）
+export interface UsageWindow {
+  used_percent: number;
+  next_reset_at: number;
+}
+
+export interface UsageResponse {
+  account: string;
+  level: string;
+  five_hour: UsageWindow | null;
+  week: UsageWindow | null;
+  tool?: UsageWindow | null;
+  tool_info?: { used: number; remaining: number } | null;
+}
+
 export interface ResetRecord {
   at: string;
   username: string;

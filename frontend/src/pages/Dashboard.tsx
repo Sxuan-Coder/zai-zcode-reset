@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError, fmtTime } from "../api";
 import { useAuth } from "../auth";
-import type { PeriodQuota, StatusResponse, TypeSnapshot } from "../types";
+import type { PeriodQuota, StatusResponse, TypeSnapshot, UsageResponse } from "../types";
 import { Icons, toast } from "../ui";
 
 /* 依据原型：额度卡片 = 图标 + 标题 + 剩余额度大数字 + 状态点 + 描述 + 全宽按钮 */
@@ -109,6 +109,102 @@ function QuotaCard({
   );
 }
 
+/* Coding Plan 用量圆环（数据来自上游 quota/limit 只读接口） */
+function Ring({ percent, label, nextResetAt, color }: { percent: number; label: string; nextResetAt: number; color: string }) {
+  const r = 34;
+  const c = 2 * Math.PI * r;
+  const p = Math.min(100, Math.max(0, percent));
+  const warn = p >= 80;
+  return (
+    <div className="usage-ring">
+      <svg width={96} height={96} viewBox="0 0 96 96">
+        <circle cx="48" cy="48" r={r} fill="none" stroke="var(--border)" strokeWidth="9" />
+        <circle
+          cx="48"
+          cy="48"
+          r={r}
+          fill="none"
+          stroke={warn ? "var(--danger)" : color}
+          strokeWidth="9"
+          strokeLinecap="round"
+          strokeDasharray={c}
+          strokeDashoffset={c * (1 - p / 100)}
+          transform="rotate(-90 48 48)"
+          style={{ transition: "stroke-dashoffset 0.6s ease" }}
+        />
+        <text x="48" y="46" textAnchor="middle" fontSize="18" fontWeight="700" fill="var(--text-1)">
+          {Math.round(p)}%
+        </text>
+        <text x="48" y="62" textAnchor="middle" fontSize="10" fill="var(--text-3)">
+          已使用
+        </text>
+      </svg>
+      <div className="usage-ring-label">{label}</div>
+      {nextResetAt > 0 ? <div className="usage-ring-sub">窗口重置于<br />{fmtTime(nextResetAt)}</div> : null}
+    </div>
+  );
+}
+
+/* Coding Plan 用量卡片：展示当前账号 5 小时 / 周额度真实用量 */
+function UsageCard() {
+  const [usage, setUsage] = useState<UsageResponse | null>(null);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      setUsage(await api<UsageResponse>("/api/reset/usage"));
+      setError("");
+    } catch {
+      setError("用量读取失败");
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+    const timer = setInterval(() => void load(), 60_000);
+    return () => clearInterval(timer);
+  }, [load]);
+
+  return (
+    <div className="quota-card usage-panel">
+      <div className="q-head">
+        <div className="q-icon" style={{ background: "#fdf2f8", color: "#db2777" }}>
+          <Icons.gauge />
+        </div>
+        <div className="q-title">
+          Coding Plan 用量
+          {usage?.level ? <span className="muted text-sm"> · {usage.level.toUpperCase()}</span> : null}
+        </div>
+      </div>
+      {error ? (
+        <div className="q-desc" style={{ flex: 1 }}>
+          {error}，稍后自动重试。
+        </div>
+      ) : !usage ? (
+        <div className="page-loading">正在读取用量…</div>
+      ) : (
+        <>
+          <div className="usage-rings">
+            {usage.five_hour ? (
+              <Ring percent={usage.five_hour.used_percent} label="5 小时额度" nextResetAt={usage.five_hour.next_reset_at} color="var(--primary)" />
+            ) : null}
+            {usage.week ? (
+              <Ring percent={usage.week.used_percent} label="周额度" nextResetAt={usage.week.next_reset_at} color="var(--success)" />
+            ) : null}
+          </div>
+          {usage.tool_info ? (
+            <div className="q-desc">
+              本月工具调用：已用 {usage.tool_info.used} 次 · 剩余 {usage.tool_info.remaining} 次
+            </div>
+          ) : (
+            <div className="q-desc">圆环为上游 Coding Plan 真实用量占比，用量满 80% 时圆环变红提醒。</div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { me } = useAuth();
   const isAdmin = me?.user.role === "admin";
@@ -193,6 +289,7 @@ export default function Dashboard() {
         {!status && !error ? (
           <div className="page-loading">正在加载重置额度…</div>
         ) : (
+          <div className="dash-row">
           <div className="quota-grid">
             <QuotaCard
               title="5 小时限制"
@@ -231,6 +328,8 @@ export default function Dashboard() {
               onDryRun={isAdmin ? () => void execute("WEEK", true) : undefined}
               dryBusy={dryBusyType === "WEEK"}
             />
+          </div>
+          <UsageCard />
           </div>
         )}
       </div>
