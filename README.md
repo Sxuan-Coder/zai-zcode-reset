@@ -51,11 +51,11 @@ ADMIN_PASSWORD=your-admin-password ./zsr.exe
 
 管理员登录后：**上游账号** 页录入 ZCode JWT 与 Coding Plan Token →（可选）在 **重置规则** 调整配额 → **用户管理** 创建成员账号分发。
 
-## Docker 部署（推荐）
+## 安装（Docker Compose，推荐）
 
 镜像内置前端 + 后端，单容器单端口（8787），多架构支持 `linux/amd64` 与 `linux/arm64`；运行层为 scratch 空镜像（纯静态 Go 二进制，无 libc），CentOS 7（内核 3.10）等老环境可直接运行。
 
-### 服务器一键启动
+### 一键启动
 
 ```bash
 # ① 安装 Docker（CentOS 7 建议 docker-ce ≥ 20.10，含 compose 插件）
@@ -71,13 +71,6 @@ docker compose logs
 ```
 
 配置项通过 `docker-compose.yml` 的 `environment` 传入（见文件内注释）；所有数据落在 `./data/`（db.json、secret.key、审计日志），**定期备份该目录**。升级：`docker compose pull && docker compose up -d`。
-
-### 发布镜像（维护者）
-
-- **自动（GitHub Actions）**：在仓库 Settings → Secrets 添加 `DOCKERHUB_USERNAME` 和 `DOCKERHUB_TOKEN`（Docker Hub → Account Settings → Security → Personal access tokens，Read & Write 权限）。之后推 `v*` 标签（如 `git tag v0.1.0 && git push --tags`）即自动构建双架构镜像并推送 `:v0.1.0`、`:0.1`、`:latest`；普通推送（含 main）不触发构建，发版必须打标签。
-- **手动（本地脚本）**：`DOCKER_USER=<你的DockerHub用户名> ./scripts/docker-push.sh v0.1.0`。
-
-发布后将 `docker-compose.yml` 中的默认镜像名改成你的命名空间即可分享给他人一键部署。
 
 ## 前端开发模式
 

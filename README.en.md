@@ -50,11 +50,11 @@ On first start the log prints the admin username and initial password (a random 
 
 After logging in as admin: enter the ZCode JWT and Coding Plan Token on the **Upstream Accounts** page → (optionally) tune limits under **Reset Rules** → create member accounts under **User Management** and hand them out.
 
-## Docker Deployment (Recommended)
+## Installation (Docker Compose, Recommended)
 
 The image bundles frontend + backend in a single container on a single port (8787), multi-arch (`linux/amd64` and `linux/arm64`); the runtime layer is a scratch image (pure static Go binary, no libc), so it runs directly on old environments such as CentOS 7 (kernel 3.10).
 
-### One-Command Server Setup
+### One-Command Setup
 
 ```bash
 # ① Install Docker (CentOS 7: docker-ce ≥ 20.10 with the compose plugin recommended)
@@ -70,13 +70,6 @@ docker compose logs
 ```
 
 Configuration is passed via `environment` in `docker-compose.yml` (see comments in the file); all data lives in `./data/` (db.json, secret.key, audit logs) — **back that directory up regularly**. To upgrade: `docker compose pull && docker compose up -d`.
-
-### Publishing the Image (Maintainers)
-
-- **Automated (GitHub Actions)**: add `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` in repo Settings → Secrets (Docker Hub → Account Settings → Security → Personal access tokens, Read & Write). Pushing a `v*` tag (e.g. `git tag v0.1.0 && git push --tags`) builds the dual-arch image and pushes `:v0.1.0`, `:0.1`, `:latest`; ordinary pushes (including `main`) do not trigger a build — publishing requires a tag.
-- **Manual (local script)**: `DOCKER_USER=<your-dockerhub-user> ./scripts/docker-push.sh v0.1.0`
-
-After publishing, change the default image name in `docker-compose.yml` to your namespace so others can deploy with one command.
 
 ## Frontend Dev Mode
 
