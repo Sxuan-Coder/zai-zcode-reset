@@ -142,17 +142,17 @@ func NewClient(creds Credentials, mock bool) *Client {
 // 核实 ZCode 客户端：status/opportunity/use/history/read 全部走 zcode.z.ai
 // （buildRuntimeZCodeApiUrl），与 family 无关；bigmodel.cn / api.z.ai 只承载
 // 监控用量接口（model-usage 等），reset 请求发过去会 404。
-// NewIdempotencyKey 生成 ZCode 客户端同款幂等键：`<毫秒时间戳36进制>-<随机36进制>`。
-// 上游对参数校验严格，base64url 中的 `_` 会被判 parameter error，这里只用 [a-z0-9-]。
+// NewIdempotencyKey 生成 ZCode 客户端同款幂等键：UUID v4
+// （crypto.randomUUID 的 Go 等价实现，见 codingPlanQuotaResetCoordinator.ts
+// 的 createIdempotencyKey）。客户端仅在 crypto 不可用时才退回
+// `<毫秒时间戳36进制>-<随机36进制>`；上游对 key 校验严格，
+// 非 UUID 格式会被 use 接口判 3001 parameter error，故与主路径保持一致。
 func NewIdempotencyKey() string {
-	randPart := make([]byte, 9)
-	_, _ = crand.Read(randPart)
-	const alphabet = "0123456789abcdefghijklmnopqrstuvwxyz"
-	out := make([]byte, len(randPart))
-	for i, b := range randPart {
-		out[i] = alphabet[int(b)%len(alphabet)]
-	}
-	return fmt.Sprintf("%x-%s", time.Now().UnixMilli(), out)
+	b := make([]byte, 16)
+	_, _ = crand.Read(b)
+	b[6] = (b[6] & 0x0f) | 0x40 // version 4
+	b[8] = (b[8] & 0x3f) | 0x80 // variant 10xx
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
 func DefaultBaseURL(family string) string {
