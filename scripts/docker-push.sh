@@ -20,7 +20,7 @@ IMAGE="${DOCKER_USER}/zai-zcode-reset"
 VERSION="${1:-$(date +%Y%m%d)}"
 
 # 复用（或创建）一个支持多架构的构建器
-if ! docker buildx ls | grep -q '^zsr-builder '; then
+if ! docker buildx ls | grep -q '^zsr-builder'; then
   docker buildx create --name zsr-builder --driver docker-container --use >/dev/null
 fi
 docker buildx use zsr-builder >/dev/null
