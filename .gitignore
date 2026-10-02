@@ -2,7 +2,7 @@
 backend/data/
 backend/data-*/
 data/
-docs/
+docs/init-project/
 
 # 构建产物
 backend/zsr

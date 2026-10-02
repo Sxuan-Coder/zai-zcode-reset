@@ -6,6 +6,12 @@ A shared platform for Coding Plan quota resets: turns "quota resets are only pos
 
 See [DESIGN.md](./DESIGN.md) for the general solution design.
 
+## Screenshot
+
+The reset panel members see after signing in: 5-hour / weekly reset opportunities (available counts, expiry, one-click use), plus real Coding Plan usage rings (5-hour window, weekly window, monthly tool calls).
+
+![Reset panel: 5-hour/weekly reset opportunities and Coding Plan usage rings](docs/images/dashboard.png)
+
 ## Features
 
 - **Landing page**: public, no login required
