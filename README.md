@@ -74,7 +74,7 @@ docker compose logs
 
 ### 发布镜像（维护者）
 
-- **自动（GitHub Actions）**：在仓库 Settings → Secrets 添加 `DOCKERHUB_USERNAME` 和 `DOCKERHUB_TOKEN`（Docker Hub → Account Settings → Security → Personal access tokens，Read & Write 权限）。之后推 `v*` 标签（如 `git tag v0.1.0 && git push --tags`）即自动构建双架构镜像并推送 `:v0.1.0`、`:0.1`、`:latest`；推 main 分支只刷新 `latest`。
+- **自动（GitHub Actions）**：在仓库 Settings → Secrets 添加 `DOCKERHUB_USERNAME` 和 `DOCKERHUB_TOKEN`（Docker Hub → Account Settings → Security → Personal access tokens，Read & Write 权限）。之后推 `v*` 标签（如 `git tag v0.1.0 && git push --tags`）即自动构建双架构镜像并推送 `:v0.1.0`、`:0.1`、`:latest`；普通推送（含 main）不触发构建，发版必须打标签。
 - **手动（本地脚本）**：`DOCKER_USER=<你的DockerHub用户名> ./scripts/docker-push.sh v0.1.0`。
 
 发布后将 `docker-compose.yml` 中的默认镜像名改成你的命名空间即可分享给他人一键部署。

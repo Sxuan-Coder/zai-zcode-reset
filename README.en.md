@@ -73,7 +73,7 @@ Configuration is passed via `environment` in `docker-compose.yml` (see comments 
 
 ### Publishing the Image (Maintainers)
 
-- **Automated (GitHub Actions)**: add `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` in repo Settings → Secrets (Docker Hub → Account Settings → Security → Personal access tokens, Read & Write). Pushing a `v*` tag (e.g. `git tag v0.1.0 && git push --tags`) builds the dual-arch image and pushes `:v0.1.0`, `:0.1`, `:latest`; pushing `main` only refreshes `latest`.
+- **Automated (GitHub Actions)**: add `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` in repo Settings → Secrets (Docker Hub → Account Settings → Security → Personal access tokens, Read & Write). Pushing a `v*` tag (e.g. `git tag v0.1.0 && git push --tags`) builds the dual-arch image and pushes `:v0.1.0`, `:0.1`, `:latest`; ordinary pushes (including `main`) do not trigger a build — publishing requires a tag.
 - **Manual (local script)**: `DOCKER_USER=<your-dockerhub-user> ./scripts/docker-push.sh v0.1.0`
 
 After publishing, change the default image name in `docker-compose.yml` to your namespace so others can deploy with one command.

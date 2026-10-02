@@ -5,14 +5,13 @@
 #   DOCKERHUB_TOKEN     Docker Hub → Account Settings → Security → Personal access tokens（Read & Write）
 #
 # 触发规则：
-#   push 到 main 分支  → 只刷新 <用户名>/zai-zcode-reset:latest
 #   push v* 标签       → 发布 :vX.Y.Z、:X.Y 和 :latest（例：git tag v0.1.0 && git push --tags）
 #   手动触发           → 按当前分支发布
+#   push 到 main 等普通推送不触发构建，发版必须打标签
 name: Docker 发布
 
 on:
   push:
-    branches: [main]
     tags: ["v*"]
   workflow_dispatch:
 
