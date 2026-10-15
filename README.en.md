@@ -8,7 +8,7 @@ See [DESIGN.md](./DESIGN.md) for the general solution design.
 
 ## Screenshot
 
-The reset panel members see after signing in: 5-hour / weekly reset opportunities (available counts, expiry, one-click use), plus real Coding Plan usage rings (5-hour window, weekly window, monthly tool calls).
+The reset panel members see after signing in: 5-hour / weekly reset opportunities (available counts, status pill, last reset time, collapsible opportunity expiry, one-click "Reset now"), plus real Coding Plan usage rings (5-hour window, weekly window, monthly tool calls), a recent-activity table and a guidance card.
 
 ![Reset panel: 5-hour/weekly reset opportunities and Coding Plan usage rings](docs/images/dashboard.png)
 
@@ -16,8 +16,8 @@ The reset panel members see after signing in: 5-hour / weekly reset opportunitie
 
 - **Landing page**: public, no login required
 - **Member system**: admins create accounts manually (password auto-generated, shown once); single sign-on (a new login revokes the old session); login IP/UA fully recorded; instant forced logout at any time
-- **Reset panel**: shows 5-hour-limit / weekly-limit reset opportunities — if available, shows the count and expiry and a "Use" button; otherwise shows "No reset". Clicking triggers the server-orchestrated two-step flow: claim (opportunity) → consume (use)
-- **Coding Plan usage panel**: real upstream usage for the bound account — 5-hour window and weekly window shown as percentage rings (red at ≥80%), plus plan level and monthly tool-call usage
+- **Reset panel**: shows 5-hour-limit / weekly-limit reset opportunities — if available, shows the count, a status pill and the last reset time (opportunity expiry is collapsible); otherwise shows "No opportunity". Clicking "Reset now" triggers the server-orchestrated two-step flow: claim (opportunity) → consume (use)
+- **Coding Plan usage panel**: real upstream usage for the bound account — 5-hour window and weekly window shown as percentage rings (turns amber at ≥80%), plus plan level and monthly tool-call usage
 - **Quota rules**: global defaults + per-user overrides (daily/weekly, split by reset type), nearest-match specificity, reserve-and-rollback, concurrency-safe; upstream 3301/429 cooldown boundaries are passed through automatically
 - **Admin console**: overview / user management / session management / reset rules / upstream accounts (token masking + connection test) / operation logs (login · reset · audit)
 - **Audit**: every login attempt, reset execution, and admin operation is persisted
