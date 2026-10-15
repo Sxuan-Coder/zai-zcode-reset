@@ -19,7 +19,7 @@ export default function AdminLayout() {
         <div className="brand" onClick={() => navigate("/admin")}>
           <div className="logo-mark">Z</div>
           <div className="brand-name">
-            ZCode AI <span className="brand-badge" style={{ background: "#6b7280" }}>管理后台</span>
+            ZCode AI <span className="brand-badge">管理后台</span>
           </div>
         </div>
         <div className="topbar-right">

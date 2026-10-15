@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, ApiError, fmtTime } from "../api";
+import { Link } from "react-router-dom";
+import { api, ApiError, fmtDate, fmtTime } from "../api";
 import { useAuth } from "../auth";
-import type { PeriodQuota, StatusResponse, TypeSnapshot, UsageResponse } from "../types";
-import { Icons, toast } from "../ui";
+import type { ResetRecord, PeriodQuota, StatusResponse, TypeSnapshot } from "../types";
+import { Icons, toast, Modal, ConfirmModal } from "../ui";
+import { UsageCard } from "../components/UsagePanel";
 
-/* 依据原型：额度卡片 = 图标 + 标题 + 剩余额度大数字 + 状态点 + 描述 + 全宽按钮 */
+/* 额度卡片：图标 + 标题 + 状态胶囊 + 剩余机会大数字 + 立即重置 / 演练 */
 function QuotaCard({
   title,
   icon,
-  watermark,
   snapshot,
   quota,
   cooldownUntil,
@@ -20,7 +21,6 @@ function QuotaCard({
 }: {
   title: string;
   icon: React.ReactNode;
-  watermark: React.ReactNode;
   snapshot: TypeSnapshot;
   quota: PeriodQuota;
   cooldownUntil: number;
@@ -35,24 +35,12 @@ function QuotaCard({
   const weekExhausted = quota.week_used >= quota.week_limit;
   const cooling = cooldownUntil > serverTime;
 
-  let status: React.ReactNode;
   let btnDisabled = false;
   let btnHint = "";
 
   if (available === 0) {
-    status = (
-      <span className="q-status none">
-        <span className="dot" /> 没重置
-      </span>
-    );
     btnDisabled = true;
     btnHint = "暂无可用重置机会";
-  } else {
-    status = (
-      <span className="q-status ok">
-        <span className="dot" /> 可使用
-      </span>
-    );
   }
   if (available > 0 && cooling) {
     btnDisabled = true;
@@ -67,140 +55,58 @@ function QuotaCard({
     btnHint = "本周次数已用完";
   }
 
+  const status = btnDisabled ? (
+    <span className="q-status none">
+      <span className="dot" />
+      {cooling ? "冷却中" : available === 0 ? "暂无机会" : "已达上限"}
+    </span>
+  ) : (
+    <span className="q-status ok">
+      <span className="dot" />
+      可使用
+    </span>
+  );
+
   return (
     <div className="quota-card">
-      <div className="quota-watermark">{watermark}</div>
       <div className="q-head">
-        <div className="q-icon">{icon}</div>
+        {icon}
         <div className="q-title">{title}</div>
+        {status}
       </div>
-      <div className="q-label">剩余重置额度</div>
+      <div className="q-label">剩余重置机会</div>
       <div className="q-value">
         {available}
         <span className="unit">次</span>
       </div>
-      {status}
       <div className="q-desc">
         今日已用 {quota.day_used}/{quota.day_limit} · 本周已用 {quota.week_used}/{quota.week_limit}
-        <br />
-        {snapshot.latest_used_at ? <>最近一次使用：{fmtTime(snapshot.latest_used_at)}</> : <>暂无使用记录</>}
-        {available > 0 && (
-          <>
-            <br />
-            机会过期时间：{snapshot.available.map((o) => fmtTime(o.expire_at)).join("、")}
-          </>
-        )}
       </div>
-      <button className="btn btn-primary btn-block q-btn" disabled={btnDisabled || busy} onClick={onUse} title={btnHint}>
-        {busy ? "正在重置…" : "去使用"}
-      </button>
-      {onDryRun ? (
-        <button
-          className="btn btn-ghost btn-sm btn-block"
-          style={{ marginTop: 8 }}
-          disabled={dryBusy}
-          onClick={onDryRun}
-          title="走完整链路校验（登录态/冷却/配额/上游连通），但不调用上游 use，不消耗机会"
-        >
-          {dryBusy ? "演练中…" : "演练（不消耗机会）"}
+      <div className="quota-actions">
+        <button className="btn btn-primary btn-block q-btn" disabled={btnDisabled || busy} onClick={onUse} title={btnHint}>
+          {busy ? "正在重置…" : <>立即重置 <span>→</span></>}
         </button>
-      ) : null}
-    </div>
-  );
-}
-
-/* Coding Plan 用量圆环（数据来自上游 quota/limit 只读接口） */
-function Ring({ percent, label, nextResetAt, color }: { percent: number; label: string; nextResetAt: number; color: string }) {
-  const r = 34;
-  const c = 2 * Math.PI * r;
-  const p = Math.min(100, Math.max(0, percent));
-  const warn = p >= 80;
-  return (
-    <div className="usage-ring">
-      <svg width={96} height={96} viewBox="0 0 96 96">
-        <circle cx="48" cy="48" r={r} fill="none" stroke="var(--border)" strokeWidth="9" />
-        <circle
-          cx="48"
-          cy="48"
-          r={r}
-          fill="none"
-          stroke={warn ? "var(--danger)" : color}
-          strokeWidth="9"
-          strokeLinecap="round"
-          strokeDasharray={c}
-          strokeDashoffset={c * (1 - p / 100)}
-          transform="rotate(-90 48 48)"
-          style={{ transition: "stroke-dashoffset 0.6s ease" }}
-        />
-        <text x="48" y="46" textAnchor="middle" fontSize="18" fontWeight="700" fill="var(--text-1)">
-          {Math.round(p)}%
-        </text>
-        <text x="48" y="62" textAnchor="middle" fontSize="10" fill="var(--text-3)">
-          已使用
-        </text>
-      </svg>
-      <div className="usage-ring-label">{label}</div>
-      {nextResetAt > 0 ? <div className="usage-ring-sub">窗口重置于<br />{fmtTime(nextResetAt)}</div> : null}
-    </div>
-  );
-}
-
-/* Coding Plan 用量卡片：展示当前账号 5 小时 / 周额度真实用量 */
-function UsageCard() {
-  const [usage, setUsage] = useState<UsageResponse | null>(null);
-  const [error, setError] = useState("");
-
-  const load = useCallback(async () => {
-    try {
-      setUsage(await api<UsageResponse>("/api/reset/usage"));
-      setError("");
-    } catch {
-      setError("用量读取失败");
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-    const timer = setInterval(() => void load(), 60_000);
-    return () => clearInterval(timer);
-  }, [load]);
-
-  return (
-    <div className="quota-card usage-panel">
-      <div className="q-head">
-        <div className="q-icon" style={{ background: "#fdf2f8", color: "#db2777" }}>
-          <Icons.gauge />
-        </div>
-        <div className="q-title">
-          Coding Plan 用量
-          {usage?.level ? <span className="muted text-sm"> · {usage.level.toUpperCase()}</span> : null}
-        </div>
+        {onDryRun ? (
+          <button className="btn btn-ghost btn-sm btn-block" disabled={dryBusy} onClick={onDryRun} title="预览重置流程，不调用上游、不消耗机会">
+            {dryBusy ? "演练中…" : "演练"}
+          </button>
+        ) : null}
       </div>
-      {error ? (
-        <div className="q-desc" style={{ flex: 1 }}>
-          {error}，稍后自动重试。
-        </div>
-      ) : !usage ? (
-        <div className="page-loading">正在读取用量…</div>
-      ) : (
-        <>
-          <div className="usage-rings">
-            {usage.five_hour ? (
-              <Ring percent={usage.five_hour.used_percent} label="5 小时额度" nextResetAt={usage.five_hour.next_reset_at} color="var(--primary)" />
-            ) : null}
-            {usage.week ? (
-              <Ring percent={usage.week.used_percent} label="周额度" nextResetAt={usage.week.next_reset_at} color="var(--success)" />
-            ) : null}
-          </div>
-          {usage.tool_info ? (
-            <div className="q-desc">
-              本月工具调用：已用 {usage.tool_info.used} 次 · 剩余 {usage.tool_info.remaining} 次
-            </div>
-          ) : (
-            <div className="q-desc">圆环为上游 Coding Plan 真实用量占比，用量满 80% 时圆环变红提醒。</div>
-          )}
-        </>
-      )}
+      {btnHint ? <p className="quota-hint">{btnHint}</p> : null}
+      <div className="quota-last">
+        <span>
+          <Icons.refresh /> 最近一次重置
+        </span>
+        <time>{snapshot.latest_used_at ? fmtTime(snapshot.latest_used_at) : "暂无记录"}</time>
+      </div>
+      {snapshot.available.length > 0 ? (
+        <details className="quota-expiry">
+          <summary>机会有效期</summary>
+          {snapshot.available.map((o, i) => (
+            <div key={i}>{fmtTime(o.expire_at)}</div>
+          ))}
+        </details>
+      ) : null}
     </div>
   );
 }
@@ -210,8 +116,14 @@ export default function Dashboard() {
   const isAdmin = me?.user.role === "admin";
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [error, setError] = useState("");
-  const [busyType, setBusyType] = useState<string>("");
-  const [dryBusyType, setDryBusyType] = useState<string>("");
+  const [busyType, setBusyType] = useState("");
+  const [dryBusyType, setDryBusyType] = useState("");
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [pending, setPending] = useState<"FIVE_HOUR" | "WEEK" | null>(null);
+  const [records, setRecords] = useState<ResetRecord[]>([]);
+  const [historyError, setHistoryError] = useState("");
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [revision, setRevision] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -258,128 +170,191 @@ export default function Dashboard() {
     }
   };
 
+  const loadHistory = useCallback(async () => {
+    try {
+      const result = await api<{ records: ResetRecord[] }>("/api/reset/history");
+      setRecords(result.records ?? []);
+      setHistoryError("");
+    } catch {
+      setHistoryError("最近活动暂时无法读取");
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadHistory();
+  }, [loadHistory, status]);
+
+  const total = status ? status.five_hour.available.length + status.week.available.length : null;
+  const busy = Boolean(busyType || dryBusyType);
+
+  const card = (kind: "FIVE_HOUR" | "WEEK") => {
+    if (!status) return null;
+    const hour = kind === "FIVE_HOUR";
+    return (
+      <QuotaCard
+        key={kind}
+        title={hour ? "5 小时额度" : "每周额度"}
+        icon={<span className={hour ? "q-icon green" : "q-icon blue"}>{hour ? <Icons.clock /> : <Icons.calendar />}</span>}
+        snapshot={hour ? status.five_hour : status.week}
+        quota={hour ? status.quota.five_hour : status.quota.week}
+        cooldownUntil={hour ? status.cooldown_until.five_hour : status.cooldown_until.week}
+        serverTime={status.server_time}
+        busy={busy}
+        onUse={() => setPending(kind)}
+        onDryRun={isAdmin ? () => void execute(kind, true) : undefined}
+        dryBusy={busy}
+      />
+    );
+  };
+
   return (
-    <div>
-      <div className="page-card">
-        <div className="product-head">
-          <div className="product-logo">Z</div>
-          <div>
-            <div className="product-title">
-              ZCode AI
-              {status?.account ? <span className="muted text-sm"> · {status.account.name}</span> : null}
-            </div>
-            <div className="product-sub">额度重置 · 5 小时限制与周限制</div>
-          </div>
+    <div className="dashboard">
+      <section className="flow-hero">
+        <div className="flow-copy">
+          <div className="flow-kicker">✧ &nbsp; MORE ROOM TO CREATE</div>
+          <h2>随时重置，继续你的心流。</h2>
+          <p>
+            {total === null ? (
+              "正在获取你的重置机会。"
+            ) : (
+              <>
+                你还有 <b>{total} 次</b>额度重置机会。
+              </>
+            )}
+            准备好，开始下一次创造。
+          </p>
         </div>
-
-        <div className="section-title" style={{ marginTop: 0 }}>
-          额度重置
+        <div className="flow-art" aria-hidden="true">
+          <i />
+          <i />
+          <i />
+          <strong>Z</strong>
+          <span>✦</span>
+          <small>STAY IN THE FLOW</small>
         </div>
-        <div className="section-desc">使用重置机会前会自动申领，成功后立即生效</div>
+      </section>
 
-        {error ? (
-          <div className="form-error" style={{ marginTop: 16 }}>
-            {error}
-            <button className="btn btn-ghost btn-sm" style={{ marginLeft: 12 }} onClick={() => void load()}>
-              重试
-            </button>
+      <div className="quota-heading">
+        <h2>
+          额度管理 <small>重置成功后立即生效</small>
+        </h2>
+        <button className="member-text-button" onClick={() => setHelpOpen(true)}>
+          ⓘ &nbsp; 重置规则
+        </button>
+      </div>
+
+      {error ? (
+        <div className="form-error" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <span>{error}</span>
+          <button className="btn btn-ghost btn-sm" onClick={() => void load()}>
+            重试
+          </button>
+        </div>
+      ) : null}
+
+      <div className="dashboard-cards">
+        {!status ? (
+          <div className="quota-card page-loading" style={{ gridColumn: "1 / -1" }}>
+            {error ? "额度暂不可用" : "正在加载重置额度…"}
           </div>
-        ) : null}
-
-        {!status && !error ? (
-          <div className="page-loading">正在加载重置额度…</div>
         ) : (
-          <div className="dash-row">
-          <div className="quota-grid">
-            <QuotaCard
-              title="5 小时限制"
-              icon={
-                <span className="q-icon blue">
-                  <Icons.clock />
-                </span>
-              }
-              watermark={<Icons.clockBig />}
-              snapshot={status?.five_hour ?? { available: [], latest_used_at: null }}
-              quota={status?.quota.five_hour ?? { day_used: 0, day_limit: 0, week_used: 0, week_limit: 0 }}
-              cooldownUntil={status?.cooldown_until.five_hour ?? 0}
-              serverTime={status?.server_time ?? Date.now()}
-              busy={busyType === "FIVE_HOUR"}
-              onUse={() => void execute("FIVE_HOUR")}
-              onDryRun={isAdmin ? () => void execute("FIVE_HOUR", true) : undefined}
-              dryBusy={dryBusyType === "FIVE_HOUR"}
-            />
-            <QuotaCard
-              title="周限制"
-              icon={
-                <span className="q-icon green">
-                  <Icons.calendar />
-                  <span className="q-refresh-badge">
-                    <Icons.refresh />
-                  </span>
-                </span>
-              }
-              watermark={<Icons.calendarBig />}
-              snapshot={status?.week ?? { available: [], latest_used_at: null }}
-              quota={status?.quota.week ?? { day_used: 0, day_limit: 0, week_used: 0, week_limit: 0 }}
-              cooldownUntil={status?.cooldown_until.week ?? 0}
-              serverTime={status?.server_time ?? Date.now()}
-              busy={busyType === "WEEK"}
-              onUse={() => void execute("WEEK")}
-              onDryRun={isAdmin ? () => void execute("WEEK", true) : undefined}
-              dryBusy={dryBusyType === "WEEK"}
-            />
-          </div>
-          <UsageCard />
-          </div>
+          <>
+            {card("FIVE_HOUR")}
+            {card("WEEK")}
+          </>
         )}
+        <UsageCard revision={revision} />
       </div>
 
-      <div className="page-card" style={{ marginTop: 20 }}>
-        <div className="section-title" style={{ marginTop: 0 }}>
-          额度说明
-        </div>
-        <div className="explain-card" style={{ marginTop: 12 }}>
-          <div className="explain-icon">?</div>
-          <div className="explain-body">
-            <div className="explain-title">什么是重置机会？</div>
-            <div className="explain-text">
-              上游 Coding Plan 在一个计费窗口内提供有限的「额度重置」机会。有可用机会时点击「去使用」即可立即重置对应窗口的用量；
-              当上游暂未发放机会（或机会已过期消耗）时，卡片会显示「没重置」，此时按钮不可点击。平台还会按管理员配置的
-              每日 / 每周次数限制你的使用频率。
-            </div>
-            <div className="explain-demo">
-              <div className="mini-card">
-                <div className="mini-head">
-                  <span className="mini-icon gray">
-                    <Icons.clock />
-                  </span>
-                  <span className="mini-title">5 小时限制（示例）</span>
-                </div>
-                <div className="q-status none">
-                  <span className="dot" /> 没重置
-                </div>
-                <button className="mini-btn" disabled style={{ width: "100%" }}>
-                  去使用
-                </button>
-              </div>
-              <div className="mini-card">
-                <div className="mini-head">
-                  <span className="mini-icon gray">
-                    <Icons.calendar />
-                  </span>
-                  <span className="mini-title">周限制（示例）</span>
-                </div>
-                <div className="q-status none">
-                  <span className="dot" /> 没重置
-                </div>
-                <button className="mini-btn" disabled style={{ width: "100%" }}>
-                  去使用
-                </button>
-              </div>
-            </div>
+      <div className="dashboard-lower">
+        <section className="recent-card">
+          <div className="recent-heading">
+            <h2>最近活动</h2>
+            <Link to="/app/records">全部记录　→</Link>
           </div>
-        </div>
+          {historyError ? (
+            <div className="empty-state">
+              {historyError}
+              <button className="member-text-button" style={{ marginLeft: 8 }} onClick={() => void loadHistory()}>
+                重试
+              </button>
+            </div>
+          ) : historyLoading ? (
+            <div className="empty-state">正在加载活动…</div>
+          ) : records.length === 0 ? (
+            <div className="empty-state">暂无重置记录，下一次继续从这里开始。</div>
+          ) : (
+            <div className="table-wrap">
+              <table className="recent-table">
+                <thead>
+                  <tr>
+                    <th>重置类型</th>
+                    <th>操作时间</th>
+                    <th>状态</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {records.slice(0, 3).map((r, i) => (
+                    <tr key={i}>
+                      <td>
+                        <span className="record-kind">
+                          {r.reset_type === "WEEK" ? <Icons.calendar /> : <Icons.clock />}
+                          {r.reset_type === "WEEK" ? "每周额度" : "5 小时额度"}
+                        </span>
+                      </td>
+                      <td>{fmtDate(r.at)}</td>
+                      <td>
+                        <span className={r.success ? "record-success" : "record-failure"}>● {r.success ? "重置成功" : "重置失败"}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        <section className="guidance-card">
+          <div className="member-eyebrow">A LITTLE GUIDANCE</div>
+          <h2>把额度用在，灵感涌现时。</h2>
+          <p>
+            额度重置后即可继续使用。想提前了解流程？
+            {isAdmin ? "试试演练模式，不消耗任何重置机会。" : "查看重置规则，安排你的创作节奏。"}
+          </p>
+          <button className="member-text-button" disabled={busy} onClick={() => (isAdmin ? void execute("FIVE_HOUR", true) : setHelpOpen(true))}>
+            {isAdmin ? "体验一次演练" : "了解重置规则"}　→
+          </button>
+          <div className="guide-leaf" aria-hidden="true">
+            <Icons.leaf />
+          </div>
+        </section>
       </div>
+
+      <Modal open={helpOpen} title="关于额度重置" onClose={() => setHelpOpen(false)}>
+        <div className="modal-text">
+          <p>重置成功后，对应 Coding Plan 窗口的已使用额度将重置，并消耗一次重置机会。</p>
+          <p>每日与每周次数上限以额度卡片显示为准。冷却期间、次数用完或没有可用机会时，暂时无法重置；每次机会的有效期可在卡片中展开查看。</p>
+          {isAdmin ? <p>演练会校验登录状态、冷却与配额，不调用上游重置，也不消耗机会。</p> : null}
+        </div>
+        <button className="btn btn-primary" onClick={() => setHelpOpen(false)}>
+          我知道了
+        </button>
+      </Modal>
+
+      <ConfirmModal
+        open={pending !== null}
+        title={pending === "WEEK" ? "重置每周额度" : "重置 5 小时额度"}
+        text="确认后将消耗 1 次重置机会，成功后立即生效。"
+        confirmText="确认重置"
+        onCancel={() => setPending(null)}
+        onConfirm={() => {
+          const kind = pending;
+          setPending(null);
+          if (kind) void execute(kind).then(() => setRevision((r) => r + 1));
+        }}
+      />
     </div>
   );
 }

@@ -21,32 +21,44 @@ export default function Landing() {
       </header>
 
       <main className="landing-main">
-        <div className="landing-hero-badge">✦ Coding Plan 额度重置共享平台</div>
-        <h1>
-          安全共享你的
-          <br />
-          <span className="grad">Coding Plan 重置额度</span>
-        </h1>
-        <p className="landing-sub">
-          上游令牌只存于服务端并全程加密。成员在受控配额内一键完成 5 小时限制与周限制重置，管理员可随时审计与强制下线。
-        </p>
-        <div className="landing-cta">
-          <button className="btn btn-primary" onClick={() => navigate(me ? "/app" : "/login")}>
-            {me ? "进入控制台" : "立即登录"}
-          </button>
-          <button className="btn btn-ghost" onClick={() => navigate("/login")}>
-            了解配额规则
-          </button>
-          <a
-            className="btn btn-ghost github-star-btn"
-            href="https://github.com/Sxuan-Coder/zai-zcode-reset"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Icons.github />
-            <span>去 GitHub 点个 Star ⭐</span>
-          </a>
-        </div>
+        <section className="landing-hero">
+          <div className="landing-hero-copy">
+            <div className="landing-hero-badge">✦ Coding Plan 额度重置共享平台</div>
+            <h1>
+              安全共享你的
+              <br />
+              <span className="grad">Coding Plan 重置额度</span>
+            </h1>
+            <p className="landing-sub">
+              上游令牌只存于服务端并全程加密。成员在受控配额内一键完成 5 小时限制与周限制重置，管理员可随时审计与强制下线。
+            </p>
+            <div className="landing-cta">
+              <button className="btn btn-primary" onClick={() => navigate(me ? "/app" : "/login")}>
+                {me ? "进入控制台" : "立即登录"}
+              </button>
+              <button className="btn btn-ghost" onClick={() => navigate("/login")}>
+                了解配额规则
+              </button>
+              <a
+                className="btn btn-ghost github-star-btn"
+                href="https://github.com/Sxuan-Coder/zai-zcode-reset"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Icons.github />
+                <span>去 GitHub 点个 Star ⭐</span>
+              </a>
+            </div>
+          </div>
+          <div className="landing-art" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+            <strong>Z</strong>
+            <span>✦</span>
+            <small>STAY IN THE FLOW</small>
+          </div>
+        </section>
 
         <div className="feature-grid">
           <div className="feature-card">
