@@ -5,7 +5,8 @@
 #   DOCKERHUB_TOKEN     Docker Hub → Account Settings → Security → Personal access tokens（Read & Write）
 #
 # 触发规则：
-#   push v* 标签       → 发布 :vX.Y.Z、:X.Y 和 :latest（例：git tag v0.1.0 && git push --tags）
+#   push 正式版 vX.Y.Z      → 发布 :vX.Y.Z、:X.Y 和 :latest（例：git tag v0.2.0 && git push --tags）
+#   push 预览版 vX.Y.Z-*    → 只发布 :vX.Y.Z-*（如 v0.3.0-beta.1、-rc.1），不动 :latest
 #   手动触发           → 按当前分支发布
 #   push 到 main 等普通推送不触发构建，发版必须打标签
 name: Docker 发布
@@ -34,13 +35,23 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: 判断是否正式版（预发布标签不打 :latest）
+        id: rel
+        run: |
+          if [[ "${{ github.ref_name }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "stable=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "stable=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: 计算镜像标签
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ secrets.DOCKERHUB_USERNAME }}/zai-zcode-reset
+          flavor: |
+            latest=${{ steps.rel.outputs.stable }}
           tags: |
-            type=raw,value=latest
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
