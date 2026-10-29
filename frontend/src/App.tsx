@@ -14,6 +14,7 @@ import AdminUsers from "./pages/admin/Users";
 import AdminSessions from "./pages/admin/Sessions";
 import AdminRules from "./pages/admin/Rules";
 import AdminAccounts from "./pages/admin/Accounts";
+import AdminAutoReset from "./pages/admin/AutoReset";
 import AdminLogs from "./pages/admin/Logs";
 
 function RequireAuth({ admin = false }: { admin?: boolean }) {
@@ -46,6 +47,7 @@ export default function App() {
           <Route path="sessions" element={<AdminSessions />} />
           <Route path="rules" element={<AdminRules />} />
           <Route path="accounts" element={<AdminAccounts />} />
+          <Route path="auto-reset" element={<AdminAutoReset />} />
           <Route path="logs" element={<AdminLogs />} />
         </Route>
       </Route>

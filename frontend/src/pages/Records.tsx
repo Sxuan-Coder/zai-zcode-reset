@@ -45,6 +45,7 @@ export default function Records() {
             <thead>
               <tr>
                 <th>重置类型</th>
+                <th>触发方式</th>
                 <th>操作时间</th>
                 <th>状态</th>
                 <th>上游编码</th>
@@ -61,6 +62,7 @@ export default function Records() {
                       {r.reset_type === "WEEK" ? "每周额度" : "5 小时额度"}
                     </span>
                   </td>
+                  <td className="record-detail">{r.trigger === "auto" ? "系统自动" : "手动"}</td>
                   <td>{fmtDate(r.at)}</td>
                   <td>
                     <span className={r.success ? "record-success" : "record-failure"}>● {r.success ? "重置成功" : "重置失败"}</span>

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"zai-zcode-reset/internal/api"
+	"zai-zcode-reset/internal/autoreset"
 	"zai-zcode-reset/internal/config"
 	"zai-zcode-reset/internal/cryptoutil"
 	"zai-zcode-reset/internal/model"
@@ -40,6 +41,15 @@ func main() {
 	q := quota.NewManager(st)
 	srv := api.NewServer(cfg, st, q, box)
 
+	// 到期自动重置调度器：随进程生命周期启停。
+	runner := autoreset.NewRunner(st, box, cfg.MockUpstream)
+	lifeCtx, lifeCancel := context.WithCancel(context.Background())
+	runnerDone := make(chan struct{})
+	go func() {
+		defer close(runnerDone)
+		runner.Run(lifeCtx)
+	}()
+
 	httpServer := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           srv,
@@ -64,6 +74,9 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = httpServer.Shutdown(ctx)
+	lifeCancel()
+	<-runnerDone
+	st.Close()
 	log.Println("已退出")
 }
 

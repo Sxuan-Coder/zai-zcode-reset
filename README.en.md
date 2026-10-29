@@ -19,7 +19,8 @@ The reset panel members see after signing in: 5-hour / weekly reset opportunitie
 - **Reset panel**: shows 5-hour-limit / weekly-limit reset opportunities — if available, shows the count, a status pill and the last reset time (opportunity expiry is collapsible); otherwise shows "No opportunity". Clicking "Reset now" triggers the server-orchestrated two-step flow: claim (opportunity) → consume (use)
 - **Coding Plan usage panel**: real upstream usage for the bound account — 5-hour window and weekly window shown as percentage rings (turns amber at ≥80%), plus plan level and monthly tool-call usage
 - **Quota rules**: global defaults + per-user overrides (daily/weekly, split by reset type), nearest-match specificity, reserve-and-rollback, concurrency-safe; upstream 3301/429 cooldown boundaries are passed through automatically
-- **Admin console**: overview / user management / session management / reset rules / upstream accounts (token masking + connection test) / operation logs (login · reset · audit)
+- **Expiry auto-reset**: claimed reset opportunities ("cards") expire at `expire_at` and go to waste — a background scheduler checks each card N minutes before expiry (default 10, configurable); if the corresponding window's remaining quota is below a threshold (default 90%, configurable), the quota was genuinely consumed and the card is used automatically; otherwise it is left to expire. Global defaults + per-account overrides, separate thresholds for 5-hour and weekly cards; auto resets don't consume member quota and are flagged "auto" in logs
+- **Admin console**: overview / user management / session management / reset rules / auto-reset / upstream accounts (token masking + connection test) / operation logs (login · reset · audit)
 - **Audit**: every login attempt, reset execution, and admin operation is persisted
 
 ## Tech Stack
@@ -101,6 +102,7 @@ Environment variables with same-name flags (flags take precedence):
 2. Inject `MASTER_KEY` via environment variable and back it up; if lost, encrypted tokens become undecryptable (just re-enter them in the admin console)
 3. Back up the `data/` directory regularly
 4. Upstream tokens are long-lived but revocable: if you suspect a leak, re-login upstream to invalidate the old JWT and update the token in the admin console
+5. "Expiry auto-reset" compares card millisecond deadlines against the server clock — keep server NTP sync healthy
 
 ## Upstream API Integration (Verified Semantics)
 
