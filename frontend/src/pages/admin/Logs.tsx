@@ -67,7 +67,8 @@ export default function AdminLogs() {
             <tr key={i}>
               <td className="mono">{fmtDate(l.at)}</td>
               <td style={{ fontWeight: 600 }}>{l.username}</td>
-              <td>{l.reset_type === "WEEK" ? "周限制" : "5 小时"}</td>
+              <td>{l.reset_type === "WEEK" ? "周限制" : l.reset_type === "ALL" ? "全部类型" : "5 小时"}</td>
+              <td>{l.trigger === "auto" ? <Badge kind="blue">自动</Badge> : <Badge kind="gray">手动</Badge>}</td>
               <td>{l.success ? <Badge kind="green">成功</Badge> : <Badge kind="red">失败</Badge>}</td>
               <td className="mono">{l.upstream_code || "—"}</td>
               <td className="text-sm muted">{l.error_kind || "—"}</td>
@@ -110,7 +111,7 @@ function LogTable({
   if (count === 0) return <EmptyState text={empty} />;
   const heads = {
     login: ["时间", "用户名", "IP", "结果", "失败原因"],
-    reset: ["时间", "用户名", "类型", "结果", "上游码", "错误类型", "IP"],
+    reset: ["时间", "用户名", "类型", "触发方式", "结果", "上游码", "错误类型", "IP"],
     audit: ["时间", "操作者", "动作", "对象", "详情"],
   };
   const kind = typeCol ? "reset" : "login";

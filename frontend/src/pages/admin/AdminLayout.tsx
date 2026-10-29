@@ -49,6 +49,7 @@ export default function AdminLayout() {
           {item("/admin/sessions", "会话管理", <Icons.activity />)}
           {item("/admin/rules", "重置规则", <Icons.list />)}
           {item("/admin/accounts", "上游账号", <Icons.key />)}
+          {item("/admin/auto-reset", "自动重置", <Icons.clock />)}
           {item("/admin/logs", "操作日志", <Icons.shield />)}
         </nav>
         <main className="content">

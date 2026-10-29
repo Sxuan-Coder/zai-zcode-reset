@@ -113,6 +113,28 @@ Rule: { id, user_id?: (空=全局), reset_type: FIVE_HOUR|WEEK|ALL,
 
 冷却（cooldown）是平台级缓存：上游 3301 的 `next_try_at` 会被记住，冷却期内直接拒绝，避免持续撞上游限流。
 
+### 3.3.1 到期自动重置（autoreset 调度器）
+
+已申领的重置机会（下称"卡"）在 `expire_at` 后作废。后台调度器（`internal/autoreset`，单 goroutine，30s tick）负责"抢救"即将作废的卡：
+
+```
+每个 tick：
+  取全局配置 → 遍历启用账号（账号覆盖 > 全局默认；未启用跳过）
+  → GET status 拿可用卡
+  → 卡处于触发窗口：expire_at − lead(默认10min) ≤ now < expire_at
+  → GET quota/limit 取对应窗口已用占比（FIVE_HOUR→unit=3 / WEEK→unit=6）
+  → 剩余占比（100−percentage）< 阈值（两类卡分开配置，默认90%）＝ 额度确实被消耗过
+  → POST use（同一张卡的所有重试复用同一幂等键）
+```
+
+关键约束：
+
+- **不预占平台配额、不写全局冷却、绝不申领新机会**——只消耗 status 里已有的卡；自动重置失败不影响成员手动重置。
+- 调度状态只在内存（键 `accountID|resetType|expireAt`）：重启后按 status 实况重建，已消耗的卡不会重复处理；失败在窗口内每 tick 重试，到期记 `auto_expired` 最终失败日志（仅实际尝试过的卡）。
+- 多张同类卡不会连环消耗：用一张后窗口剩余回到高位，其余卡不再满足阈值条件（每个 tick 重新评估用量）。
+- 配置存 `db.json` 的 `settings.auto_reset`（enabled/lead_minutes/five_hour_threshold/week_threshold，默认关闭），管理后台「自动重置」页可配，另有账号级整组覆盖；重置日志增加 `trigger: manual|auto`。
+- 用量是动态判断而非一次性快照：触发窗口内剩余从高位掉到阈值以下（用户持续消耗）也会开始触发。
+
 ### 3.4 上游账号与令牌托管（通用化的关键）
 
 ```

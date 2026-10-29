@@ -15,6 +15,10 @@ import (
 	"zai-zcode-reset/internal/model"
 )
 
+type dbSettings struct {
+	AutoReset *model.AutoResetConfig `json:"auto_reset,omitempty"`
+}
+
 type dbFile struct {
 	Version  int                       `json:"version"`
 	Users    []model.User              `json:"users"`
@@ -23,6 +27,7 @@ type dbFile struct {
 	Accounts []model.UpstreamAccount   `json:"accounts"`
 	Counters map[string]int            `json:"counters"`
 	Seed     map[string]map[string]int `json:"seed"` // 首次播种标记
+	Settings *dbSettings               `json:"settings,omitempty"`
 }
 
 type Store struct {
@@ -67,6 +72,17 @@ func Open(dataDir string) (*Store, error) {
 	} else if !os.IsNotExist(err) {
 		return nil, err
 	}
+	// 无 settings 节时播种默认自动重置配置（默认关闭，管理员显式开启）。
+	if s.db.Settings == nil {
+		s.db.Settings = &dbSettings{}
+	}
+	if s.db.Settings.AutoReset == nil {
+		def := model.DefaultAutoResetConfig()
+		s.db.Settings.AutoReset = &def
+		if err := s.saveLocked(); err != nil {
+			return nil, err
+		}
+	}
 
 	for name, pair := range map[string][2]interface{}{
 		"login.jsonl": {&s.loginFile, &s.loginPath},
@@ -82,6 +98,18 @@ func Open(dataDir string) (*Store, error) {
 		*(pair[1].(*string)) = full
 	}
 	return s, nil
+}
+
+// Close 释放打开的日志文件句柄；进程退出前调用。
+func (s *Store) Close() {
+	s.logMu.Lock()
+	defer s.logMu.Unlock()
+	for _, f := range []*os.File{s.loginFile, s.resetFile, s.auditFile} {
+		if f != nil {
+			_ = f.Close()
+		}
+	}
+	s.loginFile, s.resetFile, s.auditFile = nil, nil, nil
 }
 
 // saveLocked 原子落盘：写临时文件后 rename 覆盖，进程崩溃时不产生半份 db.json。
@@ -445,6 +473,40 @@ func (s *Store) DeleteAccount(id string) error {
 		}
 	}
 	return ErrNotFound
+}
+
+// ---------- 全局设置 ----------
+
+// GetAutoResetConfig 返回全局自动重置配置（防御性兜底到默认值）。
+func (s *Store) GetAutoResetConfig() model.AutoResetConfig {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.db.Settings == nil || s.db.Settings.AutoReset == nil {
+		return model.DefaultAutoResetConfig()
+	}
+	return *s.db.Settings.AutoReset
+}
+
+func (s *Store) SetAutoResetConfig(cfg model.AutoResetConfig) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.db.Settings == nil {
+		s.db.Settings = &dbSettings{}
+	}
+	s.db.Settings.AutoReset = &cfg
+	return s.saveLocked()
+}
+
+// FindBoundUser 返回绑定到指定上游账号的第一个用户（自动重置日志归属用）。
+func (s *Store) FindBoundUser(accountID string) (model.User, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, u := range s.db.Users {
+		if u.UpstreamAccountID == accountID {
+			return u, true
+		}
+	}
+	return model.User{}, false
 }
 
 // ---------- 重置计数 ----------

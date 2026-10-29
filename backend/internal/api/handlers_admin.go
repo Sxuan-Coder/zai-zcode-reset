@@ -1,6 +1,8 @@
 package api
 
 import (
+	"bytes"
+	"encoding/json"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -442,19 +444,20 @@ func (s *Server) handleDeleteRule(w http.ResponseWriter, r *http.Request) {
 // ---------- 上游账号管理（令牌只写不读） ----------
 
 type adminAccount struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	Family     string `json:"family"`
-	BaseURL    string `json:"base_url,omitempty"`
-	TargetType string `json:"target_type"`
-	OrgID      string `json:"org_id,omitempty"`
-	ProjectID  string `json:"project_id,omitempty"`
-	Enabled    bool   `json:"enabled"`
-	IsDefault  bool   `json:"is_default"`
-	JWTMask    string `json:"zcode_jwt_mask"`
-	TokenMask  string `json:"plan_token_mask"`
-	CreatedAt  string `json:"created_at"`
-	UpdatedAt  string `json:"updated_at"`
+	ID         string                 `json:"id"`
+	Name       string                 `json:"name"`
+	Family     string                 `json:"family"`
+	BaseURL    string                 `json:"base_url,omitempty"`
+	TargetType string                 `json:"target_type"`
+	OrgID      string                 `json:"org_id,omitempty"`
+	ProjectID  string                 `json:"project_id,omitempty"`
+	Enabled    bool                   `json:"enabled"`
+	IsDefault  bool                   `json:"is_default"`
+	AutoReset  *model.AutoResetConfig `json:"auto_reset,omitempty"`
+	JWTMask    string                 `json:"zcode_jwt_mask"`
+	TokenMask  string                 `json:"plan_token_mask"`
+	CreatedAt  string                 `json:"created_at"`
+	UpdatedAt  string                 `json:"updated_at"`
 }
 
 func maskToken(v string) string {
@@ -480,7 +483,7 @@ func toAdminAccount(a model.UpstreamAccount, box *cryptoutil.SecretBox) adminAcc
 	return adminAccount{
 		ID: a.ID, Name: a.Name, Family: a.Family, BaseURL: a.BaseURL,
 		TargetType: a.TargetType, OrgID: a.OrgID, ProjectID: a.ProjectID,
-		Enabled: a.Enabled, IsDefault: a.IsDefault,
+		Enabled: a.Enabled, IsDefault: a.IsDefault, AutoReset: a.AutoReset,
 		JWTMask: jwtMask, TokenMask: tokenMask,
 		CreatedAt: a.CreatedAt.Format(time.RFC3339), UpdatedAt: a.UpdatedAt.Format(time.RFC3339),
 	}
@@ -496,16 +499,20 @@ func (s *Server) handleListAccounts(w http.ResponseWriter, r *http.Request) {
 }
 
 type accountRequest struct {
-	Name       string `json:"name"`
-	Family     string `json:"family"`
-	BaseURL    string `json:"base_url"`
-	TargetType string `json:"target_type"`
-	OrgID      string `json:"org_id"`
-	ProjectID  string `json:"project_id"`
-	ZCodeJWT   string `json:"zcode_jwt"`  // 创建必填；更新时留空表示保持不变
-	PlanToken  string `json:"plan_token"` // 同上
-	Enabled    *bool  `json:"enabled"`
-	IsDefault  *bool  `json:"is_default"`
+	Name       string          `json:"name"`
+	Family     string          `json:"family"`
+	BaseURL    string          `json:"base_url"`
+	TargetType string          `json:"target_type"`
+	OrgID      string          `json:"org_id"`
+	ProjectID  string          `json:"project_id"`
+	ZCodeJWT   string          `json:"zcode_jwt"`  // 创建必填；更新时留空表示保持不变
+	PlanToken  string          `json:"plan_token"` // 同上
+	Enabled    *bool           `json:"enabled"`
+	IsDefault  *bool           `json:"is_default"`
+	// AutoReset 到期自动重置的账号覆盖：请求缺省 = 保持不变；
+	// 显式 null = 清除覆盖（跟随全局）；对象 = 设置覆盖并校验。
+	// 用 RawMessage 区分「缺省」与「null」。
+	AutoReset json.RawMessage `json:"auto_reset,omitempty"`
 }
 
 func (s *Server) buildAccount(req accountRequest, existing *model.UpstreamAccount) (model.UpstreamAccount, error) {
@@ -556,6 +563,20 @@ func (s *Server) buildAccount(req accountRequest, existing *model.UpstreamAccoun
 			return acc, errBadRequest("令牌加密失败")
 		}
 		acc.PlanToken = enc
+	}
+	if raw := bytes.TrimSpace(req.AutoReset); len(raw) > 0 {
+		if bytes.EqualFold(raw, []byte("null")) {
+			acc.AutoReset = nil
+		} else {
+			var cfg model.AutoResetConfig
+			if err := json.Unmarshal(raw, &cfg); err != nil {
+				return acc, errBadRequest("auto_reset 格式非法")
+			}
+			if err := cfg.Validate(); err != nil {
+				return acc, errBadRequest("auto_reset：" + err.Error())
+			}
+			acc.AutoReset = &cfg
+		}
 	}
 	return acc, nil
 }
@@ -652,20 +673,11 @@ func (s *Server) handleTestAccount(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "not_found", "账号不存在")
 		return
 	}
-	jwt, err1 := s.box.Decrypt(account.ZCodeJWT)
-	token, err2 := s.box.Decrypt(account.PlanToken)
-	if err1 != nil || err2 != nil {
+	client, err := upstream.AccountClient(account, s.box, s.cfg.MockUpstream)
+	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": false, "message": "令牌无法解密，请重新录入"})
 		return
 	}
-	baseURL := account.BaseURL
-	if baseURL == "" {
-		baseURL = upstream.DefaultBaseURL(account.Family)
-	}
-	client := upstream.NewClient(upstream.Credentials{
-		ZCodeJWT: jwt, PlanToken: token, TargetType: account.TargetType,
-		OrgID: account.OrgID, ProjectID: account.ProjectID, BaseURL: baseURL,
-	}, s.cfg.MockUpstream)
 	ctx := r.Context()
 	st, err := client.Status(ctx)
 	if err != nil {

@@ -97,6 +97,8 @@ func (s *Server) routes() {
 	m.HandleFunc("PATCH /api/admin/accounts/{id}", a(s.handlePatchAccount))
 	m.HandleFunc("DELETE /api/admin/accounts/{id}", a(s.handleDeleteAccount))
 	m.HandleFunc("POST /api/admin/accounts/{id}/test", a(s.handleTestAccount))
+	m.HandleFunc("GET /api/admin/auto-reset", a(s.handleGetAutoReset))
+	m.HandleFunc("PUT /api/admin/auto-reset", a(s.handlePutAutoReset))
 	m.HandleFunc("GET /api/admin/logs/{kind}", a(s.handleListLogs))
 
 	m.HandleFunc("/", s.serveSPA)

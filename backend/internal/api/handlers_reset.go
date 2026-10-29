@@ -43,24 +43,10 @@ func (s *Server) resolveClient(user model.User) (model.UpstreamAccount, *upstrea
 	if !ok {
 		return account, nil, errors.New("no_account")
 	}
-	jwt, err1 := s.box.Decrypt(account.ZCodeJWT)
-	token, err2 := s.box.Decrypt(account.PlanToken)
-	if err1 != nil || err2 != nil {
-		return account, nil, errors.New("token_decrypt_failed")
+	client, err := upstream.AccountClient(account, s.box, s.cfg.MockUpstream)
+	if err != nil {
+		return account, nil, err
 	}
-	baseURL := account.BaseURL
-	if baseURL == "" {
-		baseURL = upstream.DefaultBaseURL(account.Family)
-	}
-	client := upstream.NewClient(upstream.Credentials{
-		ZCodeJWT:   jwt,
-		PlanToken:  token,
-		Family:     account.Family,
-		TargetType: account.TargetType,
-		OrgID:      account.OrgID,
-		ProjectID:  account.ProjectID,
-		BaseURL:    baseURL,
-	}, s.cfg.MockUpstream)
 	return account, client, nil
 }
 
@@ -157,15 +143,6 @@ type usageResponse struct {
 	} `json:"tool_info,omitempty"`
 }
 
-func findUsageLimit(limits []upstream.UsageLimit, limitType string, unit int) *upstream.UsageLimit {
-	for i := range limits {
-		if limits[i].Type == limitType && limits[i].Unit == unit {
-			return &limits[i]
-		}
-	}
-	return nil
-}
-
 func windowFrom(l *upstream.UsageLimit) *usageWindow {
 	if l == nil {
 		return nil
@@ -192,11 +169,11 @@ func (s *Server) handleResetUsage(w http.ResponseWriter, r *http.Request) {
 	resp := usageResponse{
 		Account:  account.Name,
 		Level:    result.Level,
-		FiveHour: windowFrom(findUsageLimit(result.Limits, "TOKENS_LIMIT", 3)),
-		Week:     windowFrom(findUsageLimit(result.Limits, "TOKENS_LIMIT", 6)),
-		Tool:     windowFrom(findUsageLimit(result.Limits, "TIME_LIMIT", 5)),
+		FiveHour: windowFrom(upstream.FindUsageLimit(result.Limits, "TOKENS_LIMIT", 3)),
+		Week:     windowFrom(upstream.FindUsageLimit(result.Limits, "TOKENS_LIMIT", 6)),
+		Tool:     windowFrom(upstream.FindUsageLimit(result.Limits, "TIME_LIMIT", 5)),
 	}
-	if tool := findUsageLimit(result.Limits, "TIME_LIMIT", 5); tool != nil && tool.Usage != nil {
+	if tool := upstream.FindUsageLimit(result.Limits, "TIME_LIMIT", 5); tool != nil && tool.Usage != nil {
 		// 上游契约：usage=总量，currentValue=已用，remaining=剩余。
 		used := *tool.Usage
 		remaining := 0
@@ -444,6 +421,7 @@ func (s *Server) logReset(
 		AccountName:     account.Name,
 		ResetType:       resetType,
 		Success:         success,
+		Trigger:         model.TriggerManual,
 		OpportunityKey:  oppKey,
 		UseKey:          useKey,
 		UpstreamCode:    upstreamCode,

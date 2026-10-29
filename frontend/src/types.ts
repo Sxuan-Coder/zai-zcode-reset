@@ -67,6 +67,7 @@ export interface ResetRecord {
   account_name: string;
   reset_type: string;
   success: boolean;
+  trigger?: string; // manual（默认/旧数据）| auto
   upstream_code?: number;
   upstream_message?: string;
   error_kind?: string;
@@ -116,10 +117,28 @@ export interface AdminAccount {
   project_id?: string;
   enabled: boolean;
   is_default: boolean;
+  auto_reset?: AutoResetSettings | null;
   zcode_jwt_mask: string;
   plan_token_mask: string;
   created_at: string;
   updated_at: string;
+}
+
+// 到期自动重置（重置卡 = 上游已申领、带 expire_at 的重置机会）
+export interface AutoResetSettings {
+  enabled: boolean;
+  lead_minutes: number; // 到期前多少分钟进入触发窗口
+  five_hour_threshold: number; // 5 小时卡：窗口剩余占比低于该值才自动重置
+  week_threshold: number; // 周卡同上
+}
+
+export interface AutoResetAccount {
+  id: string;
+  name: string;
+  enabled: boolean;
+  override?: AutoResetSettings | null;
+  effective: AutoResetSettings;
+  source: "override" | "global";
 }
 
 export interface LoginLogItem {

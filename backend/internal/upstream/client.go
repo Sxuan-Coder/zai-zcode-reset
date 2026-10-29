@@ -8,6 +8,7 @@ import (
 	"context"
 	crand "crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"zai-zcode-reset/internal/cryptoutil"
 	"zai-zcode-reset/internal/model"
 )
 
@@ -101,6 +103,16 @@ type QuotaLimitResult struct {
 	Limits []UsageLimit `json:"limits"`
 }
 
+// FindUsageLimit 在用量桶列表中查找指定类型与 unit 的桶；HTTP 处理器与自动重置调度器共用。
+func FindUsageLimit(limits []UsageLimit, limitType string, unit int) *UsageLimit {
+	for i := range limits {
+		if limits[i].Type == limitType && limits[i].Unit == unit {
+			return &limits[i]
+		}
+	}
+	return nil
+}
+
 // DeniedError 上游业务码 3301：当前不允许申领（带服务端冷却边界）。
 type DeniedError struct{ NextTryAt int64 }
 
@@ -136,6 +148,28 @@ func NewClient(creds Credentials, mock bool) *Client {
 		mock:    mock,
 		mockKey: creds.ZCodeJWT + "|" + creds.PlanToken + "|" + creds.BaseURL,
 	}
+}
+
+// AccountClient 解密账号令牌并构造客户端；HTTP 处理器与自动重置调度器共用。
+func AccountClient(account model.UpstreamAccount, box *cryptoutil.SecretBox, mock bool) (*Client, error) {
+	jwt, err1 := box.Decrypt(account.ZCodeJWT)
+	token, err2 := box.Decrypt(account.PlanToken)
+	if err1 != nil || err2 != nil {
+		return nil, errors.New("token_decrypt_failed")
+	}
+	baseURL := account.BaseURL
+	if baseURL == "" {
+		baseURL = DefaultBaseURL(account.Family)
+	}
+	return NewClient(Credentials{
+		ZCodeJWT:   jwt,
+		PlanToken:  token,
+		Family:     account.Family,
+		TargetType: account.TargetType,
+		OrgID:      account.OrgID,
+		ProjectID:  account.ProjectID,
+		BaseURL:    baseURL,
+	}, mock), nil
 }
 
 // DefaultBaseURL 返回 coding-plan reset API 的默认主机。
